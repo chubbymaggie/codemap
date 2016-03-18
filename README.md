@@ -82,6 +82,8 @@ starting point of function, then press 'P' button.
 This button will ask you the address range in which the break-points will be set.
 By using this button, you can set break-points against instructions in the range of 0x8048100 ~ 0x8048200 per se.
 
+
+
 ### ALT-4 : Create/Setup Module BP
 
 This button helps you to setup breakpoints against starting point of entire functions inside a module(.dll, or .so).
@@ -96,8 +98,6 @@ put your cursor inside the memory area of the loaded module and press this butto
 then Codemap will ask you the name of the file that you stored the break-point information for this module.
 
 
-
-
 ### ALT-5 : Connect Codemap Graph with IDA
 
 This button allows you to connect the IDA with Codemap graph browser.
@@ -109,6 +109,32 @@ base address of EIP, so in such case, you need to specify the 'static module bas
 (see video explanation in codemap.kr)
 
 
+### Limitation
+
+Codemap supports all binaries that can be debugged with IDA Pro.
+However, ARM binary is not supported yet. (will be supported in future)
+
+
+### Example Usage
+
+1. Attach/Run binary with IDA Pro.
+2. Setup breakpoints where you want to trace with Codemap while program is paused
+3. Press alt-1 (Browser will popup and codemap will continue the program)
+4. Let program run and generate trace results
+5. Press alt-1 again (codemap will pause the program)
+6. Execute your SQL statement to visualize the trace.
+
+You can use following SQL statements for example.
+- select eip from trace
+- select eax,ebx,ecx from trace where eax > ebx - ecx
+- select eax from trace where ebx*3 = edx
+- select eip from trace limit 100
+- select eax from trace order by eax
+- select eip from trace where m_edi like 'bla'   (m_ prefix means the memory dump pointed by register)
+- select eip from trace where m_arg1 like 'bla'   (in x86, arg1~arg4 is equivalent to *(esp+4) ~ *(esp+16))
+- select ecx from trace where m_ecx like 'bla' order by edx limit 10
+- select edx+1000 from trace where esi < edi and eax > 100
+
 
 ### Contact for developers
 
@@ -117,4 +143,13 @@ base address of EIP, so in such case, you need to specify the 'static module bas
 - dinggul@kaist.ac.kr
 
 
-visit http://codemap.kr for more details.
+### Academic Reference
+
+KAIST CysecLab (Graduate School of Information Security, School of Computing)
+Advisor (Prof. B. Kang)
+
+
+
+
+
+Visit http://codemap.kr for more details.
