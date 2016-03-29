@@ -62,32 +62,10 @@ class Codemap(object):
     # init_arch func must called in BP.
     def init_arch(self):
         try:
-            if hasattr(idaapi, 'get_inf_structure'):
-                info = idaapi.get_inf_structure()
-            else:
-                info = idaapi.cvar.inf
-            bitness = idc.GetSegmentAttr(
-                list(idautils.Segments())[0], idc.SEGATTR_BITNESS)
-
-            if bitness == 0:
-                bitness = 16
-            elif bitness == 1:
-                bitness = 32
-            elif bitness == 2:
-                bitness = 64
-            print bitness
-            if info.procName == 'metapc':
-                if bitness == 64:
-                    self.arch = X64()
-                elif bitness == 32:
-                    self.arch = X86()
-
-            else:
-                print 'TODO: implement many architecture :)'
+            a = idc.GetRegValue('rip')
+            self.arch = X64()
         except:
-            print 'init_arch except'
-
-        return
+            self.arch = X86()
 
     def init_codemap(self):
         self.uid = datetime.datetime.fromtimestamp(
@@ -263,7 +241,7 @@ class BasicArchitecture(object):
     def set_memory(self, mem_size):
         for i in self.reg_list:
             # consider type of reg[i].
-            self.memory[i] = idaapi.dbg_read_memory(int(self.reg[i]), mem_size)
+            self.memory[i] = dbg_read_memory(int(self.reg[i]), mem_size)
             if self.memory[i] is not None:
                 self.memory[i] = self.memory[i].encode('hex')
             else:
@@ -292,7 +270,7 @@ class X86(BasicArchitecture):
     def get_stack_arg(self, n):
         esp = idc.GetRegValue('esp')
         esp += n * 4
-        val = idaapi.dbg_read_memory(esp, 4)[::-1].encode('hex')
+        val = dbg_read_memory(esp, 4)[::-1].encode('hex')
         return int(val, 16)
 
     # x86 overrides set_reg for integer version? -> maybe

@@ -42,7 +42,7 @@ you can also make your own SQL statement and specify how to visualize these resu
 
 
 ## Requirements (essential)
-- IDA Pro that supports IDA-python (6.6, 6.8 is recommended, don't use cracked version, Codemap might not work)
+- IDA Pro 6.5 or after. (6.6 is recommended, don't use cracked version, Codemap might not work)
 - Python 2.x
 
 ## Requirements (recommended)
@@ -149,7 +149,4 @@ KAIST CysecLab (Graduate School of Information Security, School of Computing)
 Advisor (Prof. B. Kang)
 
 
-
-
-
-Visit http://codemap.kr for more details.
+### Visit http://codemap.kr for more details.
