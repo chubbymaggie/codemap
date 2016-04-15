@@ -59,7 +59,7 @@ Later, codemap visualizes this trace information in the web-browser with SQL que
 
 There are 5 commands for Codemap.
 
-### ALT-1 : Start/Stop Codemap
+### ALT-1 : Start/Pause Codemap
 
 This button starts the Codemap tracing.  
 before you press this button, make sure setup break-points where you wan to trace the binary.
