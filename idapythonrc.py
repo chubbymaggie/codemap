@@ -65,6 +65,7 @@ class IDAHook(DBG_Hooks):
     global codemap
 
     def dbg_process_exit(self, pid, tid, ea, code):
+        codemap.db_insert()
         codemap.init_codemap()
         print("Process exited pid=%d tid=%d ea=0x%x code=%d" %
               (pid, tid, ea, code))
