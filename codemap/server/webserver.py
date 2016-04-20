@@ -35,9 +35,18 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
         page = self.path[1:]
         codemap = self.server.codemap
-        # print 'processing ' + page
+        
+        # find the requested uid(r_uid) among current uid + prev_uids.
+        r_uid = 'invalid_request'
+        if page.find(codemap.uid) != -1:
+            r_uid = codemap.uid
+        else:
+            for uid in codemap.prev_uids:
+                if page.find(uid) != -1:
+                    r_uid = uid
+                    break
 
-        if page.startswith(codemap.uid):
+        if page.startswith(r_uid):
             if len(page.split('?')) > 1:
                 params = page.split('?')[1].split('&')
                 for p in params:
@@ -46,6 +55,17 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         # sql query is encoded with b64
                         codemap.query = sql.decode('base64')
                         codemap.query = codemap.query.lower()
+
+                        # if query does not start with [select], consider as hex string search parameter.
+                        if not codemap.query.startswith('select'):
+                            tmpsql = ''
+                            for i in range(0, len(codemap.arch.reg_list)): # skip ip register.
+                                if i==0:
+                                    tmpsql += 'select '+codemap.arch.reg_list[i]+' from trace'+r_uid+' where 2=1 '
+                                    continue
+                                tmpsql += "or m_{0} like '%{1}%' ".format(codemap.arch.reg_list[i], codemap.query.replace(' ',''))
+                                
+                            codemap.query = tmpsql
 
                         regs = codemap.query.split(
                             'select')[1].split('from')[0].split(',')
@@ -57,12 +77,24 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
-            self.wfile.write(codemap.skel.replace(
-                '--REGISTERS--', codemap.regs).replace('--SQL--', codemap.query))
+
+            skel = open(codemap.homedir + 'ui/skel.htm', 'rb').read()
+            skel = skel.replace('--REPLACE--', codemap.uid)
+            skel = skel.replace('--ARCH--', codemap.arch.name)    
+            # if no baseaddr is configured then 0
+            if codemap.base == 0:
+                skel = skel.replace('--BASEADDR--', '0')
+            else:
+                skel = skel.replace(
+                    '--BASEADDR--', hex(codemap.base).replace('0x', ''))
+            skel = skel.replace(
+                '--REGISTERS--', codemap.regs).replace('--SQL--', codemap.query)
+
+            self.wfile.write( skel )
 
         # dynamically generate csv data set.
-        elif page == 'data' + codemap.uid + '.csv':
-            codemap.seq_dict[codemap.uid] = []
+        elif page == 'data' + r_uid + '.csv':
+            codemap.seq_dict[r_uid] = []
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
@@ -70,7 +102,6 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             con = sqlite3.connect(codemap.homedir + "codemap.db")
             cur = con.cursor()
 
-            # TODO: Fix BUG in this line -> solved
             sql = codemap.query.replace('select', 'select id,')
             cur.execute(sql)
 
@@ -84,7 +115,7 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 line = '{0},'.format(seq)
                 for i in xrange(len(codemap.regs.split(','))):
                     if i == 0:
-                        codemap.seq_dict[codemap.uid].append(r[i])
+                        codemap.seq_dict[r_uid].append(r[i])
                         continue
                     line += '{0},'.format(r[i])
 
@@ -106,16 +137,18 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write('')
 
         elif page == 'dygraph.js':
+            dygraph = open(codemap.homedir + 'ui/dygraph.js', 'rb').read()    
             self.send_response(200)
             self.send_header("Content-type", "text/javascript")
             self.end_headers()
-            self.wfile.write(codemap.dygraph)
+            self.wfile.write(dygraph)
 
         elif page == 'interaction.js':
+            interaction = open(codemap.homedir + 'ui/interaction.js', 'rb').read()    
             self.send_response(200)
             self.send_header("Content-type", "text/javascript")
             self.end_headers()
-            self.wfile.write(codemap.interaction)
+            self.wfile.write(interaction)
 
         elif page.startswith('mapx86.php?'):
             params = page.split('?')[1].split('&')
