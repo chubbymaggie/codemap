@@ -4,6 +4,7 @@ import idc
 import zlib
 import traceback
 import webbrowser
+import datetime
 from codemap import codemap
 
 __version__ = '2.0'
@@ -159,8 +160,15 @@ def StartTracing():
             suspend_process()
         return
 
+    # set current uid. if there is existing codemap instance, save it to prev_uids
+    if codemap.uid != None:
+        codemap.prev_uids.append( codemap.uid )
+
+    codemap.uid = datetime.datetime.fromtimestamp(
+        time.time()).strftime('%Y%m%d%H%M%S')
+    
+    
     codemap.init_arch()
-    codemap.skel = codemap.skel.replace('--ARCH--', codemap.arch.name)
     hook_ida()
 
     print 'hook ida done.'
@@ -174,14 +182,7 @@ def StartTracing():
         codemap.query = "select eip from trace{0}".format(codemap.uid)
     if codemap.arch.name == 'x64':
         codemap.query = "select rip from trace{0}".format(codemap.uid)
-
-    # if no baseaddr is configured then 0
-    if codemap.base == 0:
-        codemap.skel = codemap.skel.replace('--BASEADDR--', '0')
-    else:
-        codemap.skel = codemap.skel.replace(
-            '--BASEADDR--', hex(codemap.base).replace('0x', ''))
-
+    
     print 'start HTTP server'
     # start HTTP server
     codemap.start_webserver()
@@ -278,7 +279,7 @@ AddHotkey('Alt-3', 'key_3')
 AddHotkey('Alt-4', 'key_4')
 AddHotkey('Alt-5', 'key_5')
 
-print 'ALT-1 : Start/Stop Codemap'
+print 'ALT-1 : Start(Resume)/Pause Codemap'
 print 'ALT-2 : Set Function BP'
 print 'ALT-3 : Set Range BP'
 print 'ALT-4 : Create/Setup Module BP'
