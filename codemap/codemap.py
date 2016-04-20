@@ -30,10 +30,11 @@ class Codemap(object):
         self.start = False
         self.pause = False
         self.data = ''
-        self.mem_size = 32
+        self.mem_size = 48
         self.base = 0
         self.arch = 'x86'
-        self.uid = 0
+        self.uid = None
+        self.prev_uids = []     # remember previous uids for multi-client
         self.sqlite_conn = None
         self.sqlite_cursor = None
         self.dygraph = None
@@ -43,7 +44,6 @@ class Codemap(object):
         self.thread_lock = threading.Lock()
         self.thread_http = None
         self.thread_ws = None
-        self.uid = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d%H%M%S')
         self.db_name = 'codemap.db'
         self.websocket_server = None
         self.web_server = None
@@ -67,19 +67,10 @@ class Codemap(object):
         except:
             self.arch = X86()
 
-    def init_codemap(self):
-        self.uid = datetime.datetime.fromtimestamp(
-            time.time()).strftime('%Y%m%d%H%M%S')
-
+    def init_codemap(self):        
         if not os.path.exists(self.homedir):
             os.makedirs(self.homedir)
-
-        self.skel = open(self.homedir + 'ui/skel.htm', 'rb').read()
-        self.dygraph = open(self.homedir + 'ui/dygraph.js', 'rb').read()
-        self.interaction = open(
-            self.homedir + 'ui/interaction.js', 'rb').read()
-        self.skel = self.skel.replace('--REPLACE--', self.uid)
-
+        
         self.bpevent_buffer = []
         self.bpevent_bufsize = 1
         self.start = False
