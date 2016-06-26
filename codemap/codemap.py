@@ -30,10 +30,11 @@ class Codemap(object):
         self.start = False
         self.pause = False
         self.data = ''
-        self.mem_size = 32
+        self.mem_size = 48
         self.base = 0
         self.arch = 'x86'
-        self.uid = 0
+        self.uid = None
+        self.prev_uids = []     # remember previous uids for multi-client
         self.sqlite_conn = None
         self.sqlite_cursor = None
         self.dygraph = None
@@ -43,7 +44,6 @@ class Codemap(object):
         self.thread_lock = threading.Lock()
         self.thread_http = None
         self.thread_ws = None
-        self.uid = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d%H%M%S')
         self.db_name = 'codemap.db'
         self.websocket_server = None
         self.web_server = None
@@ -62,46 +62,23 @@ class Codemap(object):
     # init_arch func must called in BP.
     def init_arch(self):
         try:
-            if hasattr(idaapi, 'get_inf_structure'):
-                info = idaapi.get_inf_structure()
-            else:
-                info = idaapi.cvar.inf
-            bitness = idc.GetSegmentAttr(
-                list(idautils.Segments())[0], idc.SEGATTR_BITNESS)
-
-            if bitness == 0:
-                bitness = 16
-            elif bitness == 1:
-                bitness = 32
-            elif bitness == 2:
-                bitness = 64
-            print bitness
-            if info.procName == 'metapc':
-                if bitness == 64:
-                    self.arch = X64()
-                elif bitness == 32:
-                    self.arch = X86()
-
-            else:
-                print 'TODO: implement many architecture :)'
+            a = idc.GetRegValue('rip')
+            self.arch = X64()
         except:
-            print 'init_arch except'
+            self.arch = X86()
+        
+        try:
+            a = idc.GetRegValue('r0')
+            self.arch = ARM()
+        except:
+            self.arch = X86()
 
-        return
 
-    def init_codemap(self):
-        self.uid = datetime.datetime.fromtimestamp(
-            time.time()).strftime('%Y%m%d%H%M%S')
 
+    def init_codemap(self):        
         if not os.path.exists(self.homedir):
             os.makedirs(self.homedir)
-
-        self.skel = open(self.homedir + 'ui/skel.htm', 'rb').read()
-        self.dygraph = open(self.homedir + 'ui/dygraph.js', 'rb').read()
-        self.interaction = open(
-            self.homedir + 'ui/interaction.js', 'rb').read()
-        self.skel = self.skel.replace('--REPLACE--', self.uid)
-
+        
         self.bpevent_buffer = []
         self.bpevent_bufsize = 1
         self.start = False
@@ -132,7 +109,6 @@ class Codemap(object):
                     state_create += ' VARCHAR(2048),'
                 state_create = state_create.rstrip(',')
                 state_create += ');'
-                print state_create
                 self.sqlite_cursor.execute(state_create)
 
             # sqlite3 does not support UINT8... fuck...
@@ -151,6 +127,19 @@ class Codemap(object):
                         state_create += 'm_' + self.arch.reg_list[i]
                         state_create += ' VARCHAR(2048),'
                 state_create += ');'
+                self.sqlite_cursor.execute(state_create)
+
+            if self.arch.name is 'arm':
+                state_create = 'CREATE TABLE trace{0}'.format(
+                    self.uid) + '(id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                for i in range(0, len(self.arch.reg_list)):
+                    state_create += self.arch.reg_list[i]
+                    state_create += ' INT8, '
+                    state_create += 'm_' + self.arch.reg_list[i]
+                    state_create += ' VARCHAR(2048),'
+                state_create = state_create.rstrip(',')
+                state_create += ');'
+                print state_create
                 self.sqlite_cursor.execute(state_create)
 
             return True
@@ -247,7 +236,6 @@ class Codemap(object):
             for conn in self.wsbsocket_server.connections.itervalues():
                 conn.sendMessage(msg)
 
-
 class BasicArchitecture(object):
     def __init__(self):
         self.name = ""
@@ -263,7 +251,7 @@ class BasicArchitecture(object):
     def set_memory(self, mem_size):
         for i in self.reg_list:
             # consider type of reg[i].
-            self.memory[i] = idaapi.dbg_read_memory(int(self.reg[i]), mem_size)
+            self.memory[i] = dbg_read_memory(int(self.reg[i]), mem_size)
             if self.memory[i] is not None:
                 self.memory[i] = self.memory[i].encode('hex')
             else:
@@ -276,7 +264,6 @@ class BasicArchitecture(object):
         for k in self.memory.keys():
             _dict.update({'m_' + k: self.memory[k]})
         return _dict
-
 
 class X86(BasicArchitecture):
     def __init__(self):
@@ -292,7 +279,7 @@ class X86(BasicArchitecture):
     def get_stack_arg(self, n):
         esp = idc.GetRegValue('esp')
         esp += n * 4
-        val = idaapi.dbg_read_memory(esp, 4)[::-1].encode('hex')
+        val = dbg_read_memory(esp, 4)[::-1].encode('hex')
         return int(val, 16)
 
     # x86 overrides set_reg for integer version? -> maybe
@@ -306,7 +293,6 @@ class X86(BasicArchitecture):
         self.reg['arg3'] = self.get_stack_arg(3)
         self.reg['arg4'] = self.get_stack_arg(4)
 
-
 class X64(BasicArchitecture):
     def __init__(self):
         self.name = "x64"
@@ -318,3 +304,15 @@ class X64(BasicArchitecture):
         for i in self.reg_list:
             self.reg[i] = ''        # string
             self.memory[i] = ''
+
+class ARM(BasicArchitecture):
+    def __init__(self):
+        self.name = "arm"
+        self.reg_list = ['pc', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7',
+                         'r8', 'r9', 'r10', 'r11', 'r12', 'sp', 'lr']
+        self.reg = {}
+        self.memory = {}
+        for i in self.reg_list:
+            self.reg[i] = 0        # int
+            self.memory[i] = ''
+
