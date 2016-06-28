@@ -14,13 +14,22 @@ codemap = codemap.Codemap()
 
 
 def IDA_State():
+    res = ''
     if get_root_filename() is None:
         return 'empty'
+
     try:
+        # x86/x64
         a = idc.GetRegValue('esp')
-        return 'running'
-    except:
-        return 'static'
+        res = 'running'
+    except:    
+        try:
+            # arm
+            a = idc.GetRegValue('r0')
+            res = 'running'
+        except:
+            res = 'static'
+    return res
 
 
 # batch function break point script - daehee
