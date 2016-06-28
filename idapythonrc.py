@@ -5,6 +5,7 @@ import zlib
 import traceback
 import webbrowser
 import datetime
+import re
 from codemap import codemap
 
 __version__ = '2.0'
@@ -76,9 +77,9 @@ class IDAHook(DBG_Hooks):
 
         codemap.set_data()
         codemap.db_insert_queue()
-        continue_process()                  # continue
+        if ea not in codemap.bpts:
+            continue_process()                  # continue
         return 0    # no warning
-
 
 def hook_ida():
     global debughook
@@ -267,22 +268,115 @@ def ListenCodemap():
     global codemap
     codemap.start_websocketserver()
     print "Listning to codemap connection..."
+    
+def CmtRefresh(ea):
+    global codemap
+    bp = 'bp' if ea in codemap.bpts else ''
+    tr = 'tr' if ea in codemap.tpts else ''
+    new_prefix = '*{}* '.format('{} {}'.format(bp, tr).lstrip().rstrip())
+    new_prefix = new_prefix if new_prefix != '** ' else ''
+    
+    cmt = idc.Comment(ea)
+    cmt = cmt if cmt is not None else ''
+    
+    if re.match(r'^(\*[bptr\ ]+\*\ )', cmt):
+        cmt = re.sub(r'^(\*[bptr\ ]+\*\ )', new_prefix, cmt)
+    else:
+        cmt = new_prefix + cmt
+        
+    idc.MakeComm(ea, cmt)
+    
+    return
+    
+def ToggleBP():
+    global codemap
+    ea = ScreenEA()
+    if ea == 0xffffffff:
+        return
+    
+    chkbpt = idc.CheckBpt(ea)
+    if chkbpt == 1:
+        if ea in codemap.bpts and ea in codemap.tpts:
+            codemap.bpts.remove(ea)
+        elif ea in codemap.bpts and ea not in codemap.tpts:
+            codemap.bpts.remove(ea)
+            del_bpt(ea)
+        elif ea not in codemap.bpts and ea in codemap.tpts:
+            codemap.bpts.append(ea)
+        else:
+            print "Not Expected State. Check Design Once More"
+            
+    elif chkbpt == -1:
+        if ea not in codemap.bpts and ea not in codemap.tpts:
+            codemap.bpts.append(ea)
+            add_bpt(ea, 0, BPT_SOFT)
+        else:
+            print "Not Expected State. Check Design Once More"
+    
+    else:
+        print "Not Expected value : CheckBpt ({})".format(chkbpt)
+        return
+        
+    CmtRefresh(ea)
+    
+    return
+    
+def ToggleTrace():
+    global codemap
+    ea = ScreenEA()
+    if ea == 0xffffffff:
+        print 'invalid ea value : {}'.format(ea)
+        return
+    
+    chkbpt = idc.CheckBpt(ea)
+    if chkbpt == 1:
+        if ea in codemap.bpts and ea in codemap.tpts:
+            codemap.tpts.remove(ea)
+        elif ea in codemap.bpts and ea not in codemap.tpts:
+            codemap.tpts.append(ea)
+        elif ea not in codemap.bpts and ea in codemap.tpts:
+            codemap.tpts.remove(ea)
+            del_bpt(ea)
+        else:
+            print "Not Expected State. Check Design Once More"
+            
+    elif chkbpt == -1:
+        if ea not in codemap.bpts and ea not in codemap.tpts:
+            codemap.tpts.append(ea)
+            add_bpt(ea, 0, BPT_SOFT)
+        else:
+            print "Not Expected State. Check Design Once More"
+    
+    else:
+        print "Not Expected value : CheckBpt ({})".format(chkbpt)
+        return
+        
+    CmtRefresh(ea)
+
+    return
+
 
 CompileLine('static key_1() { RunPythonStatement("StartTracing()"); }')
 CompileLine('static key_2() { RunPythonStatement("SetFunctionBP()"); }')
 CompileLine('static key_3() { RunPythonStatement("SetRangeBP()"); }')
 CompileLine('static key_4() { RunPythonStatement("SetModuleBP()"); }')
 CompileLine('static key_5() { RunPythonStatement("ListenCodemap()"); }')
+CompileLine('static key_c4() { RunPythonStatement("ToggleTrace()"); }')
+CompileLine('static key_c5() { RunPythonStatement("ToggleBP()"); }')
 
 AddHotkey('Alt-1', 'key_1')
 AddHotkey('Alt-2', 'key_2')
 AddHotkey('Alt-3', 'key_3')
 AddHotkey('Alt-4', 'key_4')
 AddHotkey('Alt-5', 'key_5')
+AddHotkey('Ctrl-4', 'key_c4')
+AddHotkey('Ctrl-5', 'key_c5')
 
 print 'ALT-1 : Start(Resume)/Pause Codemap'
-print 'ALT-2 : Set Function BP'
-print 'ALT-3 : Set Range BP'
-print 'ALT-4 : Create/Setup Module BP'
+print 'ALT-2 : Set Function Trace Point'
+print 'ALT-3 : Set Range Trace Point'
+print 'ALT-4 : Create/Setup Module Trace'
 print 'ALT-5 : Connect Codemap Graph with IDA'
+print 'Ctrl-4 : Toggle Trace Point'
+print 'Ctrl-5 : Toggle BP only. Independent with Trace Point. Use this one than F2'
 print 'Codemap Python Plugin is ready. enjoy. - by daehee'

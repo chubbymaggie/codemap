@@ -48,6 +48,8 @@ class Codemap(object):
         self.websocket_server = None
         self.web_server = None
         self.seq_dict = {}
+        self.bpts = []
+        self.tpts = []
         self.init_codemap()
 
         self.query = ''
