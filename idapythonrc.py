@@ -262,7 +262,7 @@ def LoadModuleBP():
     except:
         traceback.print_exc(file=sys.stdout)
 
-def SetModuleBP():
+def SetModuleTrace():
     global codemap
     if codemap.start is False and IDA_State() is 'static':
         SaveModuleBP()
@@ -369,7 +369,7 @@ def ToggleTrace(def_ea=None):
 CompileLine('static key_1() { RunPythonStatement("StartTracing()"); }')
 CompileLine('static key_2() { RunPythonStatement("SetFunctionTrace()"); }')
 CompileLine('static key_3() { RunPythonStatement("SetRangeTrace()"); }')
-CompileLine('static key_4() { RunPythonStatement("SetModuleBP()"); }')
+CompileLine('static key_4() { RunPythonStatement("SetModuleTrace()"); }')
 CompileLine('static key_5() { RunPythonStatement("ListenCodemap()"); }')
 CompileLine('static key_c4() { RunPythonStatement("ToggleTrace()"); }')
 CompileLine('static key_c5() { RunPythonStatement("ToggleBP()"); }')
