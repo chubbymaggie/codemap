@@ -309,9 +309,9 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 </body>
                 </html>
                 '''.format(
-                    eip=hex(int(r['pc'])),
-                    r0=hex(int(r['r0'])), m_r0=hexdump(r['m_r0'].decode('hex')), r1=hex(int(r['r1'])), m_r1=hexdump(r['m_r1'].decode('hex')),
-                    r2=hex(int(r['r2'])), m_r2=hexdump(r['m_r2'].decode('hex')), r3=hex(int(r['r3'])), m_r3=hexdump(r['m_r3'].decode('hex')),
+                    pc=hex(int(r['pc'])), r0=hex(int(r['r0'])), m_r0=hexdump(r['m_r0'].decode('hex')), 
+                    r1=hex(int(r['r1'])), m_r1=hexdump(r['m_r1'].decode('hex')), r2=hex(int(r['r2'])), m_r2=hexdump(r['m_r2'].decode('hex')), 
+                    r3=hex(int(r['r3'])), m_r3=hexdump(r['m_r3'].decode('hex')), r4=hex(int(r['r4'])), m_r4=hexdump(r['m_r4'].decode('hex')),
                     r5=hex(int(r['r5'])), m_r5=hexdump(r['m_r5'].decode('hex')), r6=hex(int(r['r6'])), m_r6=hexdump(r['m_r6'].decode('hex')),
                     r7=hex(int(r['r7'])), m_r7=hexdump(r['m_r7'].decode('hex')), r8=hex(int(r['r8'])), m_r8=hexdump(r['m_r8'].decode('hex')),
                     r9=hex(int(r['r9'])), m_r9=hexdump(r['m_r9'].decode('hex')), r10=hex(int(r['r10'])), m_r10=hexdump(r['m_r10'].decode('hex')),
