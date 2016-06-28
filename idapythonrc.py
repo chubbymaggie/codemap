@@ -105,10 +105,10 @@ def hook_ida():
     debughook.steps = 0
 
 '''
-- SetRangeBP - 
-Get address range from user and setup bp to all instruction in that range.
+- SetRangeTrace - 
+Get address range from user and setup trace point to all instruction in that range.
 '''
-def SetRangeBP():
+def SetRangeTrace():
     if IDA_State() == 'empty':
         print 'no program loaded'
         return
@@ -118,19 +118,18 @@ def SetRangeBP():
     start_addr = int(start_addr.replace('0x', ''), 16)
     end_addr = int(end_addr.replace('0x', ''), 16)
 
-    for e in Heads(start_addr, end_addr):
-        if get_bpt(e, bpt_t()) is False:
-            add_bpt(e, 0, BPT_SOFT)
-        else:
-            del_bpt(e)
+    for e in Heads(start_addr, end_addr+1):
+        ToggleTrace(def_ea=e)
+            
+    return
 
 
 '''
-- SetFunctionBP - 
+- SetFunctionTrace - 
 put cursor inside the IDA-recognized function then call this. 
 bp will be set to all instructions of function
 '''
-def SetFunctionBP():
+def SetFunctionTrace():
     if IDA_State() == 'empty':
         print 'no program loaded'
         return
@@ -142,10 +141,7 @@ def SetFunctionBP():
 
     if target != 0:
         for e in FuncItems(target):
-            if get_bpt(e, bpt_t()) is False:
-                add_bpt(e, 0, BPT_SOFT)
-            else:
-                del_bpt(e)
+            ToggleTrace(def_ea=e)
     else:
         Warning('put cursor in the function body')
 
@@ -301,6 +297,7 @@ def ToggleBP():
     global codemap
     ea = ScreenEA()
     if ea == 0xffffffff:
+        print 'invalid ea value : {}'.format(ea)
         return
     
     chkbpt = idc.CheckBpt(ea)
@@ -330,9 +327,13 @@ def ToggleBP():
     
     return
     
-def ToggleTrace():
+def ToggleTrace(def_ea=None):
     global codemap
-    ea = ScreenEA()
+    if def_ea is None:
+        ea = ScreenEA()
+    else:
+        ea = def_ea
+    
     if ea == 0xffffffff:
         print 'invalid ea value : {}'.format(ea)
         return
@@ -366,8 +367,8 @@ def ToggleTrace():
 
 
 CompileLine('static key_1() { RunPythonStatement("StartTracing()"); }')
-CompileLine('static key_2() { RunPythonStatement("SetFunctionBP()"); }')
-CompileLine('static key_3() { RunPythonStatement("SetRangeBP()"); }')
+CompileLine('static key_2() { RunPythonStatement("SetFunctionTrace()"); }')
+CompileLine('static key_3() { RunPythonStatement("SetRangeTrace()"); }')
 CompileLine('static key_4() { RunPythonStatement("SetModuleBP()"); }')
 CompileLine('static key_5() { RunPythonStatement("ListenCodemap()"); }')
 CompileLine('static key_c4() { RunPythonStatement("ToggleTrace()"); }')
