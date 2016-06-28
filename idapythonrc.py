@@ -255,10 +255,10 @@ def LoadModuleBP():
         bps = payload.split()
         code = bytearray()
         for bp in bps:
-            code += 'add_bpt({0}, 0, BPT_SOFT);'.format(baseaddr + int(bp))
+            ToggleTrace(def_ea=(baseaddr+int(bp)))
         print 'setting breakpoints...'
         # set bp!
-        exec(str(code))
+        #exec(str(code))
     except:
         traceback.print_exc(file=sys.stdout)
 
