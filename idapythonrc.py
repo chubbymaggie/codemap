@@ -4,6 +4,8 @@ import idc
 import zlib
 import traceback
 import webbrowser
+import datetime
+import re
 from codemap import codemap
 
 __version__ = '2.0'
@@ -12,13 +14,22 @@ codemap = codemap.Codemap()
 
 
 def IDA_State():
+    res = ''
     if get_root_filename() is None:
         return 'empty'
+
     try:
+        # x86/x64
         a = idc.GetRegValue('esp')
-        return 'running'
-    except:
-        return 'static'
+        res = 'running'
+    except:    
+        try:
+            # arm
+            a = idc.GetRegValue('r0')
+            res = 'running'
+        except:
+            res = 'static'
+    return res
 
 
 # batch function break point script - daehee
@@ -64,6 +75,7 @@ class IDAHook(DBG_Hooks):
     global codemap
 
     def dbg_process_exit(self, pid, tid, ea, code):
+        codemap.db_insert()
         codemap.init_codemap()
         print("Process exited pid=%d tid=%d ea=0x%x code=%d" %
               (pid, tid, ea, code))
@@ -74,9 +86,9 @@ class IDAHook(DBG_Hooks):
 
         codemap.set_data()
         codemap.db_insert_queue()
-        continue_process()                  # continue
+        if ea not in codemap.bpts:
+            continue_process()                  # continue
         return 0    # no warning
-
 
 def hook_ida():
     global debughook
@@ -93,10 +105,10 @@ def hook_ida():
     debughook.steps = 0
 
 '''
-- SetRangeBP - 
-Get address range from user and setup bp to all instruction in that range.
+- SetRangeTrace - 
+Get address range from user and setup trace point to all instruction in that range.
 '''
-def SetRangeBP():
+def SetRangeTrace():
     if IDA_State() == 'empty':
         print 'no program loaded'
         return
@@ -106,19 +118,18 @@ def SetRangeBP():
     start_addr = int(start_addr.replace('0x', ''), 16)
     end_addr = int(end_addr.replace('0x', ''), 16)
 
-    for e in Heads(start_addr, end_addr):
-        if get_bpt(e, bpt_t()) is False:
-            add_bpt(e, 0, BPT_SOFT)
-        else:
-            del_bpt(e)
+    for e in Heads(start_addr, end_addr+1):
+        ToggleTrace(def_ea=e)
+            
+    return
 
 
 '''
-- SetFunctionBP - 
+- SetFunctionTrace - 
 put cursor inside the IDA-recognized function then call this. 
 bp will be set to all instructions of function
 '''
-def SetFunctionBP():
+def SetFunctionTrace():
     if IDA_State() == 'empty':
         print 'no program loaded'
         return
@@ -130,10 +141,7 @@ def SetFunctionBP():
 
     if target != 0:
         for e in FuncItems(target):
-            if get_bpt(e, bpt_t()) is False:
-                add_bpt(e, 0, BPT_SOFT)
-            else:
-                del_bpt(e)
+            ToggleTrace(def_ea=e)
     else:
         Warning('put cursor in the function body')
 
@@ -159,8 +167,15 @@ def StartTracing():
             suspend_process()
         return
 
+    # set current uid. if there is existing codemap instance, save it to prev_uids
+    if codemap.uid != None:
+        codemap.prev_uids.append( codemap.uid )
+
+    codemap.uid = datetime.datetime.fromtimestamp(
+        time.time()).strftime('%Y%m%d%H%M%S')
+    
+    
     codemap.init_arch()
-    codemap.skel = codemap.skel.replace('--ARCH--', codemap.arch.name)
     hook_ida()
 
     print 'hook ida done.'
@@ -174,14 +189,7 @@ def StartTracing():
         codemap.query = "select eip from trace{0}".format(codemap.uid)
     if codemap.arch.name == 'x64':
         codemap.query = "select rip from trace{0}".format(codemap.uid)
-
-    # if no baseaddr is configured then 0
-    if codemap.base == 0:
-        codemap.skel = codemap.skel.replace('--BASEADDR--', '0')
-    else:
-        codemap.skel = codemap.skel.replace(
-            '--BASEADDR--', hex(codemap.base).replace('0x', ''))
-
+    
     print 'start HTTP server'
     # start HTTP server
     codemap.start_webserver()
@@ -247,14 +255,14 @@ def LoadModuleBP():
         bps = payload.split()
         code = bytearray()
         for bp in bps:
-            code += 'add_bpt({0}, 0, BPT_SOFT);'.format(baseaddr + int(bp))
+            ToggleTrace(def_ea=(baseaddr+int(bp)))
         print 'setting breakpoints...'
         # set bp!
-        exec(str(code))
+        #exec(str(code))
     except:
         traceback.print_exc(file=sys.stdout)
 
-def SetModuleBP():
+def SetModuleTrace():
     global codemap
     if codemap.start is False and IDA_State() is 'static':
         SaveModuleBP()
@@ -265,22 +273,120 @@ def ListenCodemap():
     global codemap
     codemap.start_websocketserver()
     print "Listning to codemap connection..."
+    
+def CmtRefresh(ea):
+    global codemap
+    bp = 'bp' if ea in codemap.bpts else ''
+    tr = 'tr' if ea in codemap.tpts else ''
+    new_prefix = '*{}* '.format('{} {}'.format(bp, tr).lstrip().rstrip())
+    new_prefix = new_prefix if new_prefix != '** ' else ''
+    
+    cmt = idc.Comment(ea)
+    cmt = cmt if cmt is not None else ''
+    
+    if re.match(r'^(\*[bptr\ ]+\*\ )', cmt):
+        cmt = re.sub(r'^(\*[bptr\ ]+\*\ )', new_prefix, cmt)
+    else:
+        cmt = new_prefix + cmt
+        
+    idc.MakeComm(ea, cmt)
+    
+    return
+    
+def ToggleBP():
+    global codemap
+    ea = ScreenEA()
+    if ea == 0xffffffff:
+        print 'invalid ea value : {}'.format(ea)
+        return
+    
+    chkbpt = idc.CheckBpt(ea)
+    if chkbpt == 1:
+        if ea in codemap.bpts and ea in codemap.tpts:
+            codemap.bpts.remove(ea)
+        elif ea in codemap.bpts and ea not in codemap.tpts:
+            codemap.bpts.remove(ea)
+            del_bpt(ea)
+        elif ea not in codemap.bpts and ea in codemap.tpts:
+            codemap.bpts.append(ea)
+        else:
+            print "Not Expected State. Check Design Once More"
+            
+    elif chkbpt == -1:
+        if ea not in codemap.bpts and ea not in codemap.tpts:
+            codemap.bpts.append(ea)
+            add_bpt(ea, 0, BPT_SOFT)
+        else:
+            print "Not Expected State. Check Design Once More"
+    
+    else:
+        print "Not Expected value : CheckBpt ({})".format(chkbpt)
+        return
+        
+    CmtRefresh(ea)
+    
+    return
+    
+def ToggleTrace(def_ea=None):
+    global codemap
+    if def_ea is None:
+        ea = ScreenEA()
+    else:
+        ea = def_ea
+    
+    if ea == 0xffffffff:
+        print 'invalid ea value : {}'.format(ea)
+        return
+    
+    chkbpt = idc.CheckBpt(ea)
+    if chkbpt == 1:
+        if ea in codemap.bpts and ea in codemap.tpts:
+            codemap.tpts.remove(ea)
+        elif ea in codemap.bpts and ea not in codemap.tpts:
+            codemap.tpts.append(ea)
+        elif ea not in codemap.bpts and ea in codemap.tpts:
+            codemap.tpts.remove(ea)
+            del_bpt(ea)
+        else:
+            print "Not Expected State. Check Design Once More"
+            
+    elif chkbpt == -1:
+        if ea not in codemap.bpts and ea not in codemap.tpts:
+            codemap.tpts.append(ea)
+            add_bpt(ea, 0, BPT_SOFT)
+        else:
+            print "Not Expected State. Check Design Once More"
+    
+    else:
+        print "Not Expected value : CheckBpt ({})".format(chkbpt)
+        return
+        
+    CmtRefresh(ea)
+
+    return
+
 
 CompileLine('static key_1() { RunPythonStatement("StartTracing()"); }')
-CompileLine('static key_2() { RunPythonStatement("SetFunctionBP()"); }')
-CompileLine('static key_3() { RunPythonStatement("SetRangeBP()"); }')
-CompileLine('static key_4() { RunPythonStatement("SetModuleBP()"); }')
+CompileLine('static key_2() { RunPythonStatement("SetFunctionTrace()"); }')
+CompileLine('static key_3() { RunPythonStatement("SetRangeTrace()"); }')
+CompileLine('static key_4() { RunPythonStatement("SetModuleTrace()"); }')
 CompileLine('static key_5() { RunPythonStatement("ListenCodemap()"); }')
+CompileLine('static key_c4() { RunPythonStatement("ToggleTrace()"); }')
+CompileLine('static key_c5() { RunPythonStatement("ToggleBP()"); }')
 
 AddHotkey('Alt-1', 'key_1')
 AddHotkey('Alt-2', 'key_2')
 AddHotkey('Alt-3', 'key_3')
 AddHotkey('Alt-4', 'key_4')
 AddHotkey('Alt-5', 'key_5')
+AddHotkey('Ctrl-4', 'key_c4')
+AddHotkey('Ctrl-5', 'key_c5')
 
-print 'ALT-1 : Start/Stop Codemap'
-print 'ALT-2 : Set Function BP'
-print 'ALT-3 : Set Range BP'
-print 'ALT-4 : Create/Setup Module BP'
+print 'ALT-1 : Start(Resume)/Pause Codemap'
+print 'ALT-2 : Set Function Trace Point'
+print 'ALT-3 : Set Range Trace Point'
+print 'ALT-4 : Create/Setup Module Trace'
 print 'ALT-5 : Connect Codemap Graph with IDA'
+print 'Ctrl-4 : Toggle Trace Point'
+print 'Ctrl-5 : Toggle BP only. Independent with Trace Point. Use this one than F2'
 print 'Codemap Python Plugin is ready. enjoy. - by daehee'

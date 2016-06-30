@@ -35,9 +35,18 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
         page = self.path[1:]
         codemap = self.server.codemap
-        # print 'processing ' + page
+        
+        # find the requested uid(r_uid) among current uid + prev_uids.
+        r_uid = 'invalid_request'
+        if page.find(codemap.uid) != -1:
+            r_uid = codemap.uid
+        else:
+            for uid in codemap.prev_uids:
+                if page.find(uid) != -1:
+                    r_uid = uid
+                    break
 
-        if page.startswith(codemap.uid):
+        if page.startswith(r_uid):
             if len(page.split('?')) > 1:
                 params = page.split('?')[1].split('&')
                 for p in params:
@@ -46,6 +55,17 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         # sql query is encoded with b64
                         codemap.query = sql.decode('base64')
                         codemap.query = codemap.query.lower()
+
+                        # if query does not start with [select], consider as hex string search parameter.
+                        if not codemap.query.startswith('select'):
+                            tmpsql = ''
+                            for i in range(0, len(codemap.arch.reg_list)): # skip ip register.
+                                if i==0:
+                                    tmpsql += 'select '+codemap.arch.reg_list[i]+' from trace'+r_uid+' where 2=1 '
+                                    continue
+                                tmpsql += "or m_{0} like '%{1}%' ".format(codemap.arch.reg_list[i], codemap.query.replace(' ',''))
+                                
+                            codemap.query = tmpsql
 
                         regs = codemap.query.split(
                             'select')[1].split('from')[0].split(',')
@@ -57,12 +77,24 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
-            self.wfile.write(codemap.skel.replace(
-                '--REGISTERS--', codemap.regs).replace('--SQL--', codemap.query))
+
+            skel = open(codemap.homedir + 'ui/skel.htm', 'rb').read()
+            skel = skel.replace('--REPLACE--', codemap.uid)
+            skel = skel.replace('--ARCH--', codemap.arch.name)    
+            # if no baseaddr is configured then 0
+            if codemap.base == 0:
+                skel = skel.replace('--BASEADDR--', '0')
+            else:
+                skel = skel.replace(
+                    '--BASEADDR--', hex(codemap.base).replace('0x', ''))
+            skel = skel.replace(
+                '--REGISTERS--', codemap.regs).replace('--SQL--', codemap.query)
+
+            self.wfile.write( skel )
 
         # dynamically generate csv data set.
-        elif page == 'data' + codemap.uid + '.csv':
-            codemap.seq_dict[codemap.uid] = []
+        elif page == 'data' + r_uid + '.csv':
+            codemap.seq_dict[r_uid] = []
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
@@ -70,7 +102,6 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             con = sqlite3.connect(codemap.homedir + "codemap.db")
             cur = con.cursor()
 
-            # TODO: Fix BUG in this line -> solved
             sql = codemap.query.replace('select', 'select id,')
             cur.execute(sql)
 
@@ -84,7 +115,7 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 line = '{0},'.format(seq)
                 for i in xrange(len(codemap.regs.split(','))):
                     if i == 0:
-                        codemap.seq_dict[codemap.uid].append(r[i])
+                        codemap.seq_dict[r_uid].append(r[i])
                         continue
                     line += '{0},'.format(r[i])
 
@@ -106,16 +137,18 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write('')
 
         elif page == 'dygraph.js':
+            dygraph = open(codemap.homedir + 'ui/dygraph.js', 'rb').read()    
             self.send_response(200)
             self.send_header("Content-type", "text/javascript")
             self.end_headers()
-            self.wfile.write(codemap.dygraph)
+            self.wfile.write(dygraph)
 
         elif page == 'interaction.js':
+            interaction = open(codemap.homedir + 'ui/interaction.js', 'rb').read()    
             self.send_response(200)
             self.send_header("Content-type", "text/javascript")
             self.end_headers()
-            self.wfile.write(codemap.interaction)
+            self.wfile.write(interaction)
 
         elif page.startswith('mapx86.php?'):
             params = page.split('?')[1].split('&')
@@ -224,6 +257,66 @@ class CodemapHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     r10=hex(int(r['r10'])), m_r10=hexdump(r['m_r10'].decode('hex')), r11=hex(int(r['r11'])), m_r11=hexdump(r['m_r11'].decode('hex')),
                     r12=hex(int(r['r12'])), m_r12=hexdump(r['m_r12'].decode('hex')), r13=hex(int(r['r13'])), m_r13=hexdump(r['m_r13'].decode('hex')),
                     r14=hex(int(r['r14'])), m_r14=hexdump(r['m_r14'].decode('hex')), r15=hex(int(r['r15'])), m_r15=hexdump(r['m_r15'].decode('hex'))
+                )
+                con.close()
+
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(response)
+
+        elif page.startswith('maparm.php?'):
+            params = page.split('?')[1].split('&')
+            base = 0
+            guid = 0
+            param = 0
+            for p in params:
+                if p.startswith('base='):
+                    base = p.split('=')[1]
+                if p.startswith('guid='):
+                    guid = p.split('=')[1]
+                if p.startswith('param='):
+                    param = p.split('=')[1]
+
+            # implement mapx86.php
+            sql = "select * from trace{0} where id={1}".format(
+                guid, codemap.seq_dict[guid][int(param) - 1])
+
+            with codemap.thread_lock:
+                con = sqlite3.connect(codemap.homedir + "codemap.db")
+                con.row_factory = sqlite3.Row
+                cur = con.cursor()
+                cur.execute(sql)
+                r = cur.fetchone()
+
+                response = '''
+                <html>
+                <head>
+                <style> td {{ font-family: 'Courier New', monospace; }} </style>
+                </head>
+                <body>
+                <table border=1 cellspacing=0 cellpadding=0>
+                <!--{pc}-->
+                <tr><td><b>r0[{r0}]</b><br>{m_r0}</td><td><b>r1[{r1}]</b><br>{m_r1}</td></tr>
+                <tr><td><b>r2[{r2}]</b><br>{m_r2}</td><td><b>r3[{r3}]</b><br>{m_r3}</td></tr>
+                <tr><td><b>r4[{r4}]</b><br>{m_r4}</td><td><b>r5[{r5}]</b><br>{m_r5}</td></tr>
+                <tr><td><b>r6[{r6}]</b><br>{m_r6}</td><td><b>r7[{r7}]</b><br>{m_r7}</td></tr>
+                <tr><td><b>r8[{r8}]</b><br>{m_r8}</td><td><b>r9[{r9}]</b><br>{m_r9}</td></tr>
+                <tr><td><b>r10[{r10}]</b><br>{m_r10}</td><td><b>r11[{r11}]</b><br>{m_r11}</td></tr>
+                <tr><td><b>r12[{r12}]</b><br>{m_r12}</td><td><b>sp[{sp}]</b><br>{m_sp}</td></tr>
+                <tr><td><b>lr[{lr}]</b><br>{m_lr}</td></tr>
+                </table>
+                </body>
+                </html>
+                '''.format(
+                    pc=hex(int(r['pc'])), r0=hex(int(r['r0'])), m_r0=hexdump(r['m_r0'].decode('hex')), 
+                    r1=hex(int(r['r1'])), m_r1=hexdump(r['m_r1'].decode('hex')), r2=hex(int(r['r2'])), m_r2=hexdump(r['m_r2'].decode('hex')), 
+                    r3=hex(int(r['r3'])), m_r3=hexdump(r['m_r3'].decode('hex')), r4=hex(int(r['r4'])), m_r4=hexdump(r['m_r4'].decode('hex')),
+                    r5=hex(int(r['r5'])), m_r5=hexdump(r['m_r5'].decode('hex')), r6=hex(int(r['r6'])), m_r6=hexdump(r['m_r6'].decode('hex')),
+                    r7=hex(int(r['r7'])), m_r7=hexdump(r['m_r7'].decode('hex')), r8=hex(int(r['r8'])), m_r8=hexdump(r['m_r8'].decode('hex')),
+                    r9=hex(int(r['r9'])), m_r9=hexdump(r['m_r9'].decode('hex')), r10=hex(int(r['r10'])), m_r10=hexdump(r['m_r10'].decode('hex')),
+                    r11=hex(int(r['r11'])), m_r11=hexdump(r['m_r11'].decode('hex')), r12=hex(int(r['r12'])), m_r12=hexdump(r['m_r12'].decode('hex')),
+                    sp=hex(int(r['sp'])), m_sp=hexdump(r['m_sp'].decode('hex')), lr=hex(int(r['lr'])), m_lr=hexdump(r['m_lr'].decode('hex'))
                 )
                 con.close()
 
