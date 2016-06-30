@@ -59,7 +59,7 @@ Later, codemap visualizes this trace information in the web-browser with SQL que
 
 There are 5 commands for Codemap.
 
-### ALT-1 : Start/Stop Codemap
+### ALT-1 : Start/Pause Codemap
 
 This button starts the Codemap tracing.  
 before you press this button, make sure setup break-points where you wan to trace the binary.
@@ -98,7 +98,7 @@ put your cursor inside the memory area of the loaded module and press this butto
 then Codemap will ask you the name of the file that you stored the break-point information for this module.
 
 
-### ALT-5 : Connect Codemap Graph with IDA
+### ALT-5 : Connect Codemap Browser Screen to IDA View
 
 This button allows you to connect the IDA with Codemap graph browser.
 if you press this button and refresh the Codemap graph browser, the browser and IDA will be connected.

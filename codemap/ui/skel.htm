@@ -24,9 +24,9 @@
 		}
 
 		function checkKeyPressed(e) {			
-			if (e.keyCode != "219" && e.keyCode != "221") return; // [ and ]			
-			if (e.keyCode == "219") g_seq -= 1;
-			if (e.keyCode == "221") g_seq += 1;
+			if (e.keyCode != "37" && e.keyCode != "39") return; // [ and ]			
+			if (e.keyCode == "37") g_seq -= 1;
+			if (e.keyCode == "39") g_seq += 1;
 			snapshot( g_seq );		// this will update the g_eip.
 			move_ida( Number(g_eip) - parseInt("--BASEADDR--",16) + parseInt(document.getElementById("n_base").value,16) );			
 		}
