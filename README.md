@@ -5,10 +5,11 @@
 Codemap is a binary analysis tool for "run-trace visualization" provided as IDA plugin.
 
 Unlike DBI(Dynamic Binary Instrumentation) based tools such as Intel PIN or QEMU, 
-Codemap uses 'breakpoints' for tracing the program.
+Codemap uses 'tracepoints' for generating the register/memory information while 
+the program's control flow passes the tracepoint.
 
-If the program hits a breakpoint, Codemap breakpoint handler is invoked as a callback function
-then proper action for trace is taken and program continues.  
+If the program hits a tracepoint, Codemap call-back handler is invoked
+then proper action for trace is taken; and program continues.  
 This might sound like a slow/inefficient approach for execution tracing.
 However, there are two major advantages by tracing the binary in this manner.
 
